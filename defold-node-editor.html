@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Defold Node Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #161a23;
+    --panel: #1c2130;
+    --border: #2a3045;
+    --border-hover: #3d4f72;
+    --accent: #4f8ef7;
+    --accent2: #a78bfa;
+    --accent3: #34d399;
+    --accent4: #f59e0b;
+    --accent5: #f87171;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --node-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    --conn-color: #4f8ef7;
+  }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* TOOLBAR */
+  #toolbar {
+    height: 48px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  .toolbar-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-right: 12px;
+  }
+
+  .toolbar-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+  .toolbar-btn {
+    height: 32px;
+    padding: 0 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toolbar-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,0.08); }
+  .toolbar-btn.danger:hover { border-color: var(--accent5); color: var(--accent5); background: rgba(248,113,113,0.08); }
+
+  .toolbar-spacer { flex: 1; }
+
+  /* LAYOUT */
+  #layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  #sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    padding: 10px 12px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .node-palette-item {
+    margin: 3px 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: grab;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    transition: all 0.15s;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .node-palette-item:hover { border-color: var(--border-hover); color: var(--text); background: rgba(255,255,255,0.04); }
+  .node-palette-item:active { cursor: grabbing; }
+  .palette-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* CANVAS */
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(79,142,247,0.03) 0%, transparent 60%),
+      linear-gradient(rgba(42,48,69,0.4) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(42,48,69,0.4) 1px, transparent 1px);
+    background-size: 100% 100%, 28px 28px, 28px 28px;
+    cursor: default;
+  }
+
+  #canvas-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #nodes-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 2;
+  }
+
+  /* NODES */
+  .node {
+    position: absolute;
+    min-width: 180px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--node-shadow);
+    cursor: grab;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    user-select: none;
+  }
+  .node:hover { border-color: var(--border-hover); }
+  .node.selected { border-color: var(--accent); box-shadow: var(--node-shadow), 0 0 0 1px var(--accent); }
+  .node:active { cursor: grabbing; }
+
+  .node-header {
+    padding: 8px 12px;
+    border-radius: 9px 9px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .node-type-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .node-title { font-size: 12px; font-weight: 700; letter-spacing: 0.03em; }
+  .node-delete {
+    margin-left: auto;
+    width: 18px; height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .node:hover .node-delete { opacity: 1; }
+  .node-delete:hover { color: var(--accent5); }
+
+  .node-body { padding: 6px 0; }
+
+  .node-port-row {
+    display: flex;
+    align-items: center;
+    padding: 3px 0;
+    position: relative;
+  }
+
+  .port {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--border-hover);
+    background: var(--panel);
+    position: absolute;
+    cursor: crosshair;
+    transition: all 0.15s;
+    z-index: 10;
+  }
+  .port:hover { transform: scale(1.4); border-color: var(--accent); background: var(--accent); }
+  .port.connected { background: var(--conn-color); border-color: var(--conn-color); }
+
+  .port-in { left: -6px; }
+  .port-out { right: -6px; }
+
+  .port-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .port-label-in { margin-left: 16px; }
+  .port-label-out { margin-right: 16px; margin-left: auto; }
+
+  .node-field {
+    padding: 2px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .node-field label {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+  }
+  .node-field input, .node-field select {
+    flex: 1;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 6px;
+    outline: none;
+    min-width: 0;
+  }
+  .node-field input:focus, .node-field select:focus { border-color: var(--accent); }
+  .node-field select option { background: var(--panel); }
+
+  /* CODE PANEL */
+  #code-panel {
+    width: 340px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .code-panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .code-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent3);
+    flex: 1;
+  }
+
+  .copy-btn {
+    height: 26px;
+    padding: 0 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: 'Syne', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+
+  #code-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #c9d1d9;
+    white-space: pre;
+    tab-size: 2;
+  }
+
+  /* Lua syntax highlighting */
+  .lua-keyword { color: #ff7b72; }
+  .lua-string { color: #a5d6ff; }
+  .lua-comment { color: #8b949e; font-style: italic; }
+  .lua-func { color: #d2a8ff; }
+  .lua-number { color: #79c0ff; }
+  .lua-defold { color: #ffa657; }
+
+  /* CONNECTIONS SVG */
+  .connection-path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.7;
+    filter: drop-shadow(0 0 4px rgba(79,142,247,0.4));
+  }
+  .connection-path.drag-preview {
+    stroke-dasharray: 6 4;
+    opacity: 0.5;
+  }
+
+  /* Context menu */
+  #ctx-menu {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+    z-index: 9999;
+    display: none;
+    min-width: 180px;
+    padding: 4px;
+  }
+  .ctx-item {
+    padding: 7px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ctx-item:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+  #status-bar {
+    height: 26px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="toolbar-title">⬡ NODEFOLD</span>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn" onclick="generateCode()">▶ Generate Lua</button>
+  <button class="toolbar-btn" onclick="autoLayout()">⊞ Auto-Layout</button>
+  <button class="toolbar-btn" onclick="loadExample()">⊙ Load Example</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn danger" onclick="clearAll()">✕ Clear</button>
+  <div class="toolbar-spacer"></div>
+  <span style="font-size:11px;color:var(--text-muted)">Right-click canvas for nodes</span>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div class="sidebar-section">Lifecycle</div>
+    <div class="node-palette-item" draggable="true" data-type="init" style="--dot:#4f8ef7">
+      <div class="palette-dot" style="background:#4f8ef7"></div>init()
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="update" style="--dot:#4f8ef7">
+      <div class="palette-dot" style="background:#4f8ef7"></div>update()
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="on_message" style="--dot:#4f8ef7">
+      <div class="palette-dot" style="background:#4f8ef7"></div>on_message()
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="on_input" style="--dot:#4f8ef7">
+      <div class="palette-dot" style="background:#4f8ef7"></div>on_input()
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="final">
+      <div class="palette-dot" style="background:#4f8ef7"></div>final()
+    </div>
+
+    <div class="sidebar-section">Game Object</div>
+    <div class="node-palette-item" draggable="true" data-type="go_set_pos">
+      <div class="palette-dot" style="background:#a78bfa"></div>go.set_position
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="go_get_pos">
+      <div class="palette-dot" style="background:#a78bfa"></div>go.get_position
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="go_animate">
+      <div class="palette-dot" style="background:#a78bfa"></div>go.animate
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="go_delete">
+      <div class="palette-dot" style="background:#a78bfa"></div>go.delete
+    </div>
+
+    <div class="sidebar-section">Logic</div>
+    <div class="node-palette-item" draggable="true" data-type="if_check">
+      <div class="palette-dot" style="background:#f59e0b"></div>if / condition
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="variable">
+      <div class="palette-dot" style="background:#34d399"></div>variable
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="math_op">
+      <div class="palette-dot" style="background:#34d399"></div>math
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="print">
+      <div class="palette-dot" style="background:#94a3b8"></div>print
+    </div>
+
+    <div class="sidebar-section">Messages</div>
+    <div class="node-palette-item" draggable="true" data-type="msg_post">
+      <div class="palette-dot" style="background:#f87171"></div>msg.post
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="msg_url">
+      <div class="palette-dot" style="background:#f87171"></div>msg.url
+    </div>
+
+    <div class="sidebar-section">Physics</div>
+    <div class="node-palette-item" draggable="true" data-type="physics_ray">
+      <div class="palette-dot" style="background:#38bdf8"></div>ray_cast
+    </div>
+    <div class="node-palette-item" draggable="true" data-type="on_collision">
+      <div class="palette-dot" style="background:#38bdf8"></div>on_collision
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <svg id="canvas-svg"></svg>
+    <div id="nodes-layer"></div>
+  </div>
+
+  <div id="code-panel">
+    <div class="code-panel-header">
+      <span class="code-panel-title">// GENERATED LUA</span>
+      <button class="copy-btn" onclick="copyCode()">Copy</button>
+    </div>
+    <div id="code-output"><span class="lua-comment">-- Build your node graph and click Generate Lua
+-- Right-click the canvas to add nodes
+-- Drag from output ports to input ports to connect</span></div>
+  </div>
+</div>
+
+<div id="status-bar">
+  <div class="status-dot"></div>
+  <span id="status-nodes">0 nodes</span>
+  <span id="status-conns">0 connections</span>
+  <span style="margin-left:auto;color:var(--accent3)" id="status-msg">Ready</span>
+</div>
+
+<div id="ctx-menu"></div>
+
+<script>
+// ===================== STATE =====================
+let nodes = [];
+let connections = [];
+let nodeIdCounter = 0;
+let dragNode = null, dragOffset = {x:0,y:0};
+let drawingConn = null; // {fromNode, fromPort, x, y}
+let canvasOffset = {x:0,y:0};
+let panStart = null;
+let selectedNode = null;
+
+const canvas = document.getElementById('canvas-wrap');
+const svg = document.getElementById('canvas-svg');
+const nodesLayer = document.getElementById('nodes-layer');
+
+// ===================== NODE DEFINITIONS =====================
+const NODE_DEFS = {
+  init: {
+    label: 'init()', color: '#4f8ef7',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [],
+    category: 'lifecycle'
+  },
+  update: {
+    label: 'update()', color: '#4f8ef7',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}, {id:'dt', label:'dt'}],
+    fields: [],
+    category: 'lifecycle'
+  },
+  on_message: {
+    label: 'on_message()', color: '#4f8ef7',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}, {id:'msg_id', label:'message_id'}, {id:'msg', label:'message'}],
+    fields: [{id:'filter', type:'text', label:'filter msg', placeholder:'e.g. "fire"'}],
+    category: 'lifecycle'
+  },
+  on_input: {
+    label: 'on_input()', color: '#4f8ef7',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}, {id:'action_id', label:'action_id'}, {id:'action', label:'action'}],
+    fields: [],
+    category: 'lifecycle'
+  },
+  final: {
+    label: 'final()', color: '#4f8ef7',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [],
+    category: 'lifecycle'
+  },
+  go_set_pos: {
+    label: 'go.set_position', color: '#a78bfa',
+    inputs: [{id:'exec', label:'exec'}, {id:'pos', label:'position'}],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [{id:'target', type:'text', label:'target', placeholder:'.'}],
+    category: 'go'
+  },
+  go_get_pos: {
+    label: 'go.get_position', color: '#a78bfa',
+    inputs: [{id:'exec', label:'exec'}],
+    outputs: [{id:'exec', label:'exec'}, {id:'pos', label:'position'}],
+    fields: [{id:'target', type:'text', label:'target', placeholder:'.'}],
+    category: 'go'
+  },
+  go_animate: {
+    label: 'go.animate', color: '#a78bfa',
+    inputs: [{id:'exec', label:'exec'}, {id:'to', label:'to'}],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [
+      {id:'target', type:'text', label:'target', placeholder:'.'},
+      {id:'property', type:'text', label:'property', placeholder:'position.x'},
+      {id:'easing', type:'select', label:'easing', options:['EASING_LINEAR','EASING_INOUT','EASING_OUT','EASING_IN']},
+      {id:'duration', type:'text', label:'duration', placeholder:'1.0'},
+    ],
+    category: 'go'
+  },
+  go_delete: {
+    label: 'go.delete', color: '#a78bfa',
+    inputs: [{id:'exec', label:'exec'}],
+    outputs: [],
+    fields: [{id:'target', type:'text', label:'target', placeholder:'.'}],
+    category: 'go'
+  },
+  if_check: {
+    label: 'if / condition', color: '#f59e0b',
+    inputs: [{id:'exec', label:'exec'}, {id:'cond', label:'condition'}],
+    outputs: [{id:'true', label:'true'}, {id:'false', label:'false'}],
+    fields: [{id:'expr', type:'text', label:'expr', placeholder:'value > 0'}],
+    category: 'logic'
+  },
+  variable: {
+    label: 'variable', color: '#34d399',
+    inputs: [{id:'set', label:'set'}],
+    outputs: [{id:'value', label:'value'}],
+    fields: [
+      {id:'name', type:'text', label:'name', placeholder:'my_var'},
+      {id:'init', type:'text', label:'init', placeholder:'0'},
+    ],
+    category: 'logic'
+  },
+  math_op: {
+    label: 'math', color: '#34d399',
+    inputs: [{id:'a', label:'a'}, {id:'b', label:'b'}],
+    outputs: [{id:'result', label:'result'}],
+    fields: [{id:'op', type:'select', label:'op', options:['+','-','*','/','%','math.max','math.min']}],
+    category: 'logic'
+  },
+  print: {
+    label: 'print', color: '#64748b',
+    inputs: [{id:'exec', label:'exec'}, {id:'value', label:'value'}],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [{id:'prefix', type:'text', label:'prefix', placeholder:'debug:'}],
+    category: 'debug'
+  },
+  msg_post: {
+    label: 'msg.post', color: '#f87171',
+    inputs: [{id:'exec', label:'exec'}, {id:'data', label:'data'}],
+    outputs: [{id:'exec', label:'exec'}],
+    fields: [
+      {id:'target', type:'text', label:'target', placeholder:'receiver_url'},
+      {id:'message', type:'text', label:'message', placeholder:'hash("msg_name")'},
+    ],
+    category: 'msg'
+  },
+  msg_url: {
+    label: 'msg.url', color: '#f87171',
+    inputs: [],
+    outputs: [{id:'url', label:'url'}],
+    fields: [{id:'url', type:'text', label:'url', placeholder:'"/game/hero#script"'}],
+    category: 'msg'
+  },
+  physics_ray: {
+    label: 'physics.ray_cast', color: '#38bdf8',
+    inputs: [{id:'exec', label:'exec'}, {id:'from', label:'from'}, {id:'to', label:'to'}],
+    outputs: [{id:'exec', label:'exec'}, {id:'hit', label:'hit result'}],
+    fields: [{id:'groups', type:'text', label:'groups', placeholder:'{"wall","enemy"}'}],
+    category: 'physics'
+  },
+  on_collision: {
+    label: 'on_collision', color: '#38bdf8',
+    inputs: [],
+    outputs: [{id:'exec', label:'exec'}, {id:'other', label:'other_id'}, {id:'group', label:'group'}],
+    fields: [{id:'group', type:'text', label:'filter group', placeholder:'enemy'}],
+    category: 'physics'
+  }
+};
+
+// ===================== NODE CREATION =====================
+function createNode(type, x, y) {
+  const def = NODE_DEFS[type];
+  if (!def) return;
+  const id = 'node_' + (++nodeIdCounter);
+  const node = { id, type, x, y, def, fields: {} };
+  def.fields.forEach(f => { node.fields[f.id] = f.placeholder || (f.options ? f.options[0] : ''); });
+  nodes.push(node);
+  renderNode(node);
+  updateStatus();
+  return node;
+}
+
+function renderNode(node) {
+  const def = node.def;
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.id = node.id;
+  el.style.left = node.x + 'px';
+  el.style.top = node.y + 'px';
+
+  let portsHtml = '';
+  const maxPorts = Math.max(def.inputs.length, def.outputs.length);
+  for (let i = 0; i < maxPorts; i++) {
+    const inp = def.inputs[i];
+    const out = def.outputs[i];
+    portsHtml += `<div class="node-port-row" style="min-height:22px">`;
+    if (inp) {
+      portsHtml += `<div class="port port-in" data-node="${node.id}" data-port="${inp.id}" data-dir="in" title="${inp.label}"></div>`;
+      portsHtml += `<span class="port-label port-label-in">${inp.label}</span>`;
+    }
+    if (out) {
+      portsHtml += `<span class="port-label port-label-out">${out.label}</span>`;
+      portsHtml += `<div class="port port-out" data-node="${node.id}" data-port="${out.id}" data-dir="out" title="${out.label}"></div>`;
+    }
+    portsHtml += `</div>`;
+  }
+
+  let fieldsHtml = '';
+  def.fields.forEach(f => {
+    const val = node.fields[f.id] || '';
+    if (f.type === 'select') {
+      const opts = f.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('');
+      fieldsHtml += `<div class="node-field"><label>${f.label}</label><select data-node="${node.id}" data-field="${f.id}">${opts}</select></div>`;
+    } else {
+      fieldsHtml += `<div class="node-field"><label>${f.label}</label><input type="text" value="${val}" placeholder="${f.placeholder||''}" data-node="${node.id}" data-field="${f.id}"></div>`;
+    }
+  });
+
+  el.innerHTML = `
+    <div class="node-header">
+      <div class="node-type-dot" style="background:${def.color}"></div>
+      <span class="node-title">${def.label}</span>
+      <button class="node-delete" onclick="deleteNode('${node.id}')">✕</button>
+    </div>
+    <div class="node-body">
+      ${portsHtml}
+      ${fieldsHtml}
+    </div>`;
+
+  nodesLayer.appendChild(el);
+  node.el = el;
+
+  // Drag
+  const header = el.querySelector('.node-header');
+  header.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('node-delete')) return;
+    e.preventDefault();
+    selectNode(node.id);
+    dragNode = node;
+    const rect = el.getBoundingClientRect();
+    dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  });
+
+  // Port events
+  el.querySelectorAll('.port').forEach(port => {
+    port.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const dir = port.dataset.dir;
+      if (dir === 'out') startConnection(port, node, port.dataset.port);
+    });
+    port.addEventListener('mouseup', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (drawingConn && port.dataset.dir === 'in') {
+        finishConnection(node, port.dataset.port);
+      }
+    });
+  });
+
+  // Fields
+  el.querySelectorAll('input,select').forEach(inp => {
+    inp.addEventListener('mousedown', e => e.stopPropagation());
+    inp.addEventListener('input', e => {
+      const n = nodes.find(n => n.id === inp.dataset.node);
+      if (n) { n.fields[inp.dataset.field] = inp.value; generateCode(); }
+    });
+    inp.addEventListener('change', e => {
+      const n = nodes.find(n => n.id === inp.dataset.node);
+      if (n) { n.fields[inp.dataset.field] = inp.value; generateCode(); }
+    });
+  });
+}
+
+// ===================== SELECTION =====================
+function selectNode(id) {
+  document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+  selectedNode = id;
+  if (id) document.getElementById(id)?.classList.add('selected');
+}
+
+// ===================== CONNECTIONS =====================
+let previewPath = null;
+
+function startConnection(port, node, portId) {
+  const portRect = port.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+  drawingConn = {
+    fromNode: node,
+    fromPort: portId,
+    x: portRect.left + portRect.width/2 - canvasRect.left,
+    y: portRect.top + portRect.height/2 - canvasRect.top
+  };
+  previewPath = document.createElementNS('http://www.w3.org/2000/svg','path');
+  previewPath.classList.add('connection-path','drag-preview');
+  svg.appendChild(previewPath);
+}
+
+function finishConnection(toNode, toPortId) {
+  if (!drawingConn) return;
+  // Prevent duplicate / self
+  const from = drawingConn.fromNode;
+  if (from.id === toNode.id) { cancelConnection(); return; }
+  const exists = connections.find(c => c.fromNode === from.id && c.fromPort === drawingConn.fromPort && c.toNode === toNode.id && c.toPort === toPortId);
+  if (!exists) {
+    connections.push({ fromNode: from.id, fromPort: drawingConn.fromPort, toNode: toNode.id, toPort: toPortId });
+    updateConnections();
+    updateStatus();
+    generateCode();
+  }
+  cancelConnection();
+}
+
+function cancelConnection() {
+  if (previewPath) { previewPath.remove(); previewPath = null; }
+  drawingConn = null;
+}
+
+function getPortPos(nodeId, portId, dir) {
+  const el = document.getElementById(nodeId);
+  if (!el) return {x:0,y:0};
+  const port = el.querySelector(`.port-${dir}[data-port="${portId}"]`);
+  if (!port) return {x:0,y:0};
+  const pr = port.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  return { x: pr.left + pr.width/2 - cr.left, y: pr.top + pr.height/2 - cr.top };
+}
+
+function cubicPath(x1,y1,x2,y2) {
+  const dx = Math.abs(x2-x1) * 0.5 + 40;
+  return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+}
+
+function updateConnections() {
+  svg.innerHTML = '';
+  connections.forEach((c, i) => {
+    const from = getPortPos(c.fromNode, c.fromPort, 'out');
+    const to = getPortPos(c.toNode, c.toPort, 'in');
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.classList.add('connection-path');
+    path.setAttribute('d', cubicPath(from.x,from.y,to.x,to.y));
+    path.dataset.conn = i;
+    path.style.cursor = 'pointer';
+    path.addEventListener('dblclick', () => { connections.splice(i,1); updateConnections(); updateStatus(); generateCode(); });
+    svg.appendChild(path);
+  });
+  // Update port connected states
+  document.querySelectorAll('.port').forEach(p => p.classList.remove('connected'));
+  connections.forEach(c => {
+    const fromEl = document.getElementById(c.fromNode)?.querySelector(`.port-out[data-port="${c.fromPort}"]`);
+    const toEl = document.getElementById(c.toNode)?.querySelector(`.port-in[data-port="${c.toPort}"]`);
+    if (fromEl) fromEl.classList.add('connected');
+    if (toEl) toEl.classList.add('connected');
+  });
+}
+
+// ===================== MOUSE EVENTS =====================
+document.addEventListener('mousemove', e => {
+  if (dragNode) {
+    const cr = canvas.getBoundingClientRect();
+    dragNode.x = e.clientX - cr.left - dragOffset.x;
+    dragNode.y = e.clientY - cr.top - dragOffset.y;
+    dragNode.x = Math.max(0, dragNode.x);
+    dragNode.y = Math.max(0, dragNode.y);
+    dragNode.el.style.left = dragNode.x + 'px';
+    dragNode.el.style.top = dragNode.y + 'px';
+    updateConnections();
+  }
+  if (drawingConn && previewPath) {
+    const cr = canvas.getBoundingClientRect();
+    const tx = e.clientX - cr.left;
+    const ty = e.clientY - cr.top;
+    previewPath.setAttribute('d', cubicPath(drawingConn.x, drawingConn.y, tx, ty));
+  }
+});
+
+document.addEventListener('mouseup', e => {
+  if (dragNode) { dragNode = null; generateCode(); }
+  if (drawingConn) cancelConnection();
+});
+
+canvas.addEventListener('click', e => {
+  if (e.target === canvas || e.target === nodesLayer || e.target === svg) selectNode(null);
+});
+
+// ===================== DRAG FROM PALETTE =====================
+document.querySelectorAll('.node-palette-item').forEach(item => {
+  item.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('nodeType', item.dataset.type);
+  });
+});
+
+canvas.addEventListener('dragover', e => e.preventDefault());
+canvas.addEventListener('drop', e => {
+  e.preventDefault();
+  const type = e.dataTransfer.getData('nodeType');
+  if (!type) return;
+  const cr = canvas.getBoundingClientRect();
+  createNode(type, e.clientX - cr.left - 90, e.clientY - cr.top - 30);
+  generateCode();
+});
+
+// ===================== CONTEXT MENU =====================
+const ctxMenu = document.getElementById('ctx-menu');
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const cr = canvas.getBoundingClientRect();
+  const cx = e.clientX - cr.left;
+  const cy = e.clientY - cr.top;
+
+  const cats = {
+    'Lifecycle': ['init','update','on_message','on_input','final'],
+    'Game Object': ['go_set_pos','go_get_pos','go_animate','go_delete'],
+    'Logic': ['if_check','variable','math_op','print'],
+    'Messages': ['msg_post','msg_url'],
+    'Physics': ['physics_ray','on_collision'],
+  };
+
+  let html = '';
+  Object.entries(cats).forEach(([cat, types], ci) => {
+    if (ci > 0) html += `<div class="ctx-sep"></div>`;
+    html += `<div class="ctx-item" style="font-size:10px;color:var(--text-muted);cursor:default;padding:4px 12px">${cat.toUpperCase()}</div>`;
+    types.forEach(type => {
+      const def = NODE_DEFS[type];
+      html += `<div class="ctx-item" onclick="createNode('${type}',${cx},${cy});ctxHide();generateCode()">
+        <div style="width:7px;height:7px;border-radius:50%;background:${def.color};flex-shrink:0"></div>
+        ${def.label}
+      </div>`;
+    });
+  });
+
+  ctxMenu.innerHTML = html;
+  ctxMenu.style.display = 'block';
+  ctxMenu.style.left = e.clientX + 'px';
+  ctxMenu.style.top = e.clientY + 'px';
+
+  const menuRect = ctxMenu.getBoundingClientRect();
+  if (menuRect.right > window.innerWidth) ctxMenu.style.left = (e.clientX - menuRect.width) + 'px';
+  if (menuRect.bottom > window.innerHeight) ctxMenu.style.top = (e.clientY - menuRect.height) + 'px';
+});
+
+function ctxHide() { ctxMenu.style.display = 'none'; }
+document.addEventListener('click', ctxHide);
+document.addEventListener('contextmenu', () => {}, true);
+
+// ===================== DELETE NODE =====================
+function deleteNode(id) {
+  connections = connections.filter(c => c.fromNode !== id && c.toNode !== id);
+  nodes = nodes.filter(n => n.id !== id);
+  document.getElementById(id)?.remove();
+  updateConnections();
+  updateStatus();
+  generateCode();
+}
+
+function clearAll() {
+  nodes = []; connections = [];
+  nodesLayer.innerHTML = '';
+  svg.innerHTML = '';
+  updateStatus();
+  document.getElementById('code-output').innerHTML = '<span class="lua-comment">-- Canvas cleared</span>';
+}
+
+// ===================== STATUS =====================
+function updateStatus() {
+  document.getElementById('status-nodes').textContent = nodes.length + ' node' + (nodes.length!==1?'s':'');
+  document.getElementById('status-conns').textContent = connections.length + ' connection' + (connections!==1?'s':'');
+}
+
+// ===================== AUTO LAYOUT =====================
+function autoLayout() {
+  // Topological sort by connections
+  const visited = new Set();
+  const ordered = [];
+  const adj = {};
+  nodes.forEach(n => { adj[n.id] = []; });
+  connections.forEach(c => { if (adj[c.fromNode]) adj[c.fromNode].push(c.toNode); });
+
+  function dfs(id) {
+    if (visited.has(id)) return;
+    visited.add(id);
+    (adj[id]||[]).forEach(dfs);
+    ordered.unshift(id);
+  }
+  nodes.forEach(n => dfs(n.id));
+
+  const levelMap = {};
+  const levelCount = {};
+  ordered.forEach(id => {
+    const inConns = connections.filter(c => c.toNode === id);
+    const level = inConns.length === 0 ? 0 : Math.max(...inConns.map(c => (levelMap[c.fromNode]||0)+1));
+    levelMap[id] = level;
+    levelCount[level] = (levelCount[level]||0) + 1;
+  });
+
+  const colHeight = {};
+  ordered.forEach(id => {
+    const node = nodes.find(n => n.id === id);
+    if (!node) return;
+    const lv = levelMap[id] || 0;
+    colHeight[lv] = colHeight[lv] || 0;
+    node.x = 40 + lv * 240;
+    node.y = 40 + colHeight[lv] * 160;
+    colHeight[lv] += 1;
+    node.el.style.left = node.x + 'px';
+    node.el.style.top = node.y + 'px';
+  });
+  updateConnections();
+}
+
+// ===================== CODE GENERATION =====================
+function generateCode() {
+  try {
+    const code = buildLua();
+    renderCode(code);
+    document.getElementById('status-msg').textContent = 'Generated ✓';
+  } catch(e) {
+    document.getElementById('status-msg').textContent = 'Error: ' + e.message;
+  }
+}
+
+function buildLua() {
+  if (nodes.length === 0) return '-- No nodes yet.\n-- Right-click or drag nodes onto the canvas.';
+
+  const lines = [];
+  lines.push('-- Generated by Defold Node Editor');
+  lines.push('-- ' + new Date().toLocaleString());
+  lines.push('');
+
+  // Variables first
+  const varNodes = nodes.filter(n => n.type === 'variable');
+  if (varNodes.length > 0) {
+    lines.push('-- Variables');
+    varNodes.forEach(n => {
+      const name = n.fields.name || 'my_var';
+      const init = n.fields.init || '0';
+      lines.push(`local ${name} = ${init}`);
+    });
+    lines.push('');
+  }
+
+  // Lifecycle functions
+  const lifecycleTypes = ['init','update','on_message','on_input','final','on_collision'];
+  const lifecycle = nodes.filter(n => lifecycleTypes.includes(n.type));
+
+  // Group execution chains by starting node
+  const visited = new Set();
+  const getChain = (startId) => {
+    const chain = [];
+    let current = startId;
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      chain.push(current);
+      const next = connections.find(c => c.fromNode === current && c.fromPort === 'exec');
+      current = next ? next.toNode : null;
+    }
+    return chain;
+  };
+
+  const lifecycleOrder = ['init','final','update','on_message','on_input','on_collision'];
+  const lifecycleSorted = [...lifecycle].sort((a,b) => lifecycleOrder.indexOf(a.type) - lifecycleOrder.indexOf(b.type));
+
+  const generated = new Set();
+  lifecycleSorted.forEach(startNode => {
+    if (generated.has(startNode.id)) return;
+    generated.add(startNode.id);
+    const chain = getChain(startNode.id);
+    const funcLines = generateFunction(startNode, chain);
+    lines.push(...funcLines);
+    lines.push('');
+  });
+
+  // Any loose non-lifecycle chains
+  const orphans = nodes.filter(n => !lifecycleTypes.includes(n.type) && !visited.has(n.id));
+  if (orphans.length > 0) {
+    lines.push('-- Helper expressions (not connected to a lifecycle function)');
+    orphans.forEach(n => {
+      lines.push(...generateNodeExpr(n, 0));
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function indent(n) { return '  '.repeat(n); }
+
+function generateFunction(startNode, chain) {
+  const lines = [];
+  const n = startNode;
+
+  switch(n.type) {
+    case 'init':
+      lines.push('function init(self)');
+      chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      lines.push('end');
+      break;
+    case 'final':
+      lines.push('function final(self)');
+      chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      lines.push('end');
+      break;
+    case 'update':
+      lines.push('function update(self, dt)');
+      chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      lines.push('end');
+      break;
+    case 'on_message':
+      lines.push('function on_message(self, message_id, message, sender)');
+      const msgFilter = n.fields.filter;
+      if (msgFilter) {
+        lines.push(`${indent(1)}if message_id == hash("${msgFilter.replace(/"/g,'')}") then`);
+        chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 2)));
+        lines.push(`${indent(1)}end`);
+      } else {
+        chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      }
+      lines.push('end');
+      break;
+    case 'on_input':
+      lines.push('function on_input(self, action_id, action)');
+      chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      lines.push(`${indent(1)}return false`);
+      lines.push('end');
+      break;
+    case 'on_collision':
+      const grp = n.fields.group;
+      lines.push('function on_collision_response(self, other_id, group)');
+      if (grp) {
+        lines.push(`${indent(1)}if group == hash("${grp}") then`);
+        chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 2)));
+        lines.push(`${indent(1)}end`);
+      } else {
+        chain.slice(1).forEach(id => lines.push(...generateNodeStatement(id, 1)));
+      }
+      lines.push('end');
+      break;
+    default:
+      break;
+  }
+  return lines;
+}
+
+function getInputValue(nodeId, portId) {
+  const conn = connections.find(c => c.toNode === nodeId && c.toPort === portId);
+  if (!conn) return null;
+  const fromNode = nodes.find(n => n.id === conn.fromNode);
+  if (!fromNode) return null;
+  return getNodeOutputValue(fromNode, conn.fromPort);
+}
+
+function getNodeOutputValue(node, portId) {
+  switch(node.type) {
+    case 'variable': return node.fields.name || 'my_var';
+    case 'math_op': {
+      const a = getInputValue(node.id,'a') || '0';
+      const b = getInputValue(node.id,'b') || '0';
+      const op = node.fields.op || '+';
+      if (op === 'math.max' || op === 'math.min') return `${op}(${a}, ${b})`;
+      return `(${a} ${op} ${b})`;
+    }
+    case 'go_get_pos': return `go.get_position(${node.fields.target||'"."'})`;
+    case 'msg_url': return `msg.url(${node.fields.url||'"."'})`;
+    case 'update': return portId === 'dt' ? 'dt' : null;
+    case 'on_message': return portId === 'msg_id' ? 'message_id' : portId === 'msg' ? 'message' : null;
+    case 'on_input': return portId === 'action_id' ? 'action_id' : portId === 'action' ? 'action' : null;
+    case 'physics_ray': return portId === 'hit' ? 'ray_result' : null;
+    case 'on_collision': return portId === 'other' ? 'other_id' : portId === 'group' ? 'group' : null;
+    default: return null;
+  }
+}
+
+function generateNodeStatement(nodeId, depth) {
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return [];
+  const lines = [];
+  const ind = indent(depth);
+
+  switch(node.type) {
+    case 'go_set_pos': {
+      const pos = getInputValue(nodeId,'pos') || 'vmath.vector3(0,0,0)';
+      const target = node.fields.target || '"."';
+      lines.push(`${ind}go.set_position(${pos}, ${target})`);
+      break;
+    }
+    case 'go_get_pos': {
+      lines.push(`${ind}local pos = go.get_position(${node.fields.target||'"."'})`);
+      break;
+    }
+    case 'go_animate': {
+      const to = getInputValue(nodeId,'to') || '0';
+      const target = node.fields.target || '"."';
+      const prop = node.fields.property || 'position.x';
+      const easing = 'go.' + (node.fields.easing || 'EASING_LINEAR');
+      const dur = node.fields.duration || '1.0';
+      lines.push(`${ind}go.animate(${target}, "${prop}", go.PLAYBACK_ONCE_FORWARD, ${to}, ${easing}, ${dur})`);
+      break;
+    }
+    case 'go_delete': {
+      const target = node.fields.target || '"."';
+      lines.push(`${ind}go.delete(${target})`);
+      break;
+    }
+    case 'msg_post': {
+      const data = getInputValue(nodeId,'data') || '{}';
+      const target = node.fields.target || 'msg.url()';
+      const message = node.fields.message || 'hash("message")';
+      lines.push(`${ind}msg.post(${target}, ${message}, ${data})`);
+      break;
+    }
+    case 'print': {
+      const value = getInputValue(nodeId,'value') || '"value"';
+      const prefix = node.fields.prefix ? `"${node.fields.prefix} " .. ` : '';
+      lines.push(`${ind}print(${prefix}tostring(${value}))`);
+      break;
+    }
+    case 'if_check': {
+      const cond = getInputValue(nodeId,'cond') || node.fields.expr || 'true';
+      lines.push(`${ind}if ${cond} then`);
+      // true branch
+      const trueConn = connections.find(c => c.fromNode === nodeId && c.fromPort === 'true');
+      if (trueConn) lines.push(...generateNodeStatement(trueConn.toNode, depth+1));
+      else lines.push(`${ind}  -- true branch`);
+      const falseConn = connections.find(c => c.fromNode === nodeId && c.fromPort === 'false');
+      if (falseConn) {
+        lines.push(`${ind}else`);
+        lines.push(...generateNodeStatement(falseConn.toNode, depth+1));
+      }
+      lines.push(`${ind}end`);
+      break;
+    }
+    case 'variable': {
+      lines.push(`${ind}${node.fields.name||'my_var'} = ${getInputValue(nodeId,'set')||node.fields.init||'0'}`);
+      break;
+    }
+    case 'physics_ray': {
+      const from = getInputValue(nodeId,'from') || 'go.get_position()';
+      const to = getInputValue(nodeId,'to') || 'vmath.vector3(0,0,0)';
+      const groups = node.fields.groups || '{}';
+      lines.push(`${ind}local ray_result = physics.ray_cast(${from}, ${to}, ${groups})`);
+      break;
+    }
+    default: break;
+  }
+  return lines;
+}
+
+function generateNodeExpr(node, depth) {
+  return generateNodeStatement(node.id, depth);
+}
+
+// ===================== SYNTAX HIGHLIGHTING =====================
+function renderCode(code) {
+  const keywords = /\b(function|end|local|if|then|else|elseif|return|while|for|do|repeat|until|break|not|and|or|in|nil|true|false)\b/g;
+  const defoldFns = /\b(go|msg|physics|vmath|hash|sprite|sound|label|timer|gui|factory|collection|particlefx|camera|render)\b/g;
+  const strings = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g;
+  const comments = /--[^\n]*/g;
+  const numbers = /\b\d+(\.\d+)?\b/g;
+  const functions = /\b(\w+)\s*(?=\()/g;
+
+  let html = code
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Order matters - do comments and strings first to avoid nested replacements
+  const tokens = [];
+  let result = '';
+  let lastIdx = 0;
+  const regex = /(--[^\n]*)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
+  let m;
+  while ((m = regex.exec(html)) !== null) {
+    result += html.slice(lastIdx, m.index);
+    if (m[1]) result += `<span class="lua-comment">${m[1]}</span>`;
+    else result += `<span class="lua-string">${m[0]}</span>`;
+    lastIdx = regex.lastIndex;
+  }
+  result += html.slice(lastIdx);
+
+  result = result.replace(/(?<![<"'])\b(function|end|local|if|then|else|elseif|return|while|for|do|repeat|until|break|not|and|or|in|nil|true|false)\b(?![^<]*>)/g,
+    '<span class="lua-keyword">$1</span>');
+  result = result.replace(/(?<![<"'])\b(go|msg|physics|vmath|hash|sprite|sound|label|timer|gui|factory|collection|particlefx|camera|render)\b(?![^<]*>)/g,
+    '<span class="lua-defold">$1</span>');
+  result = result.replace(/(?<![<"'])(?<!\w)\d+(?:\.\d+)?(?!\w)(?![^<]*>)/g,
+    '<span class="lua-number">$&</span>');
+
+  document.getElementById('code-output').innerHTML = result;
+}
+
+// ===================== COPY =====================
+function copyCode() {
+  const code = document.getElementById('code-output').innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    document.getElementById('status-msg').textContent = 'Copied to clipboard!';
+    setTimeout(() => document.getElementById('status-msg').textContent = 'Ready', 2000);
+  });
+}
+
+// ===================== EXAMPLE =====================
+function loadExample() {
+  clearAll();
+  const n1 = createNode('init', 40, 60);
+  const n2 = createNode('variable', 300, 40);
+  n2.el.querySelector(`input[data-field="name"]`).value = 'speed';
+  n2.fields.name = 'speed';
+  n2.el.querySelector(`input[data-field="init"]`).value = '200';
+  n2.fields.init = '200';
+
+  const n3 = createNode('go_get_pos', 300, 180);
+  n3.el.querySelector(`input[data-field="target"]`).value = '"."';
+  n3.fields.target = '"."';
+
+  const n4 = createNode('update', 40, 220);
+  const n5 = createNode('math_op', 300, 340);
+  n5.el.querySelector(`select[data-field="op"]`).value = '*';
+  n5.fields.op = '*';
+
+  const n6 = createNode('go_set_pos', 560, 280);
+  n6.el.querySelector(`input[data-field="target"]`).value = '"."';
+  n6.fields.target = '"."';
+
+  const n7 = createNode('on_message', 40, 440);
+  n7.el.querySelector(`input[data-field="filter"]`).value = 'fire';
+  n7.fields.filter = 'fire';
+
+  const n8 = createNode('msg_post', 320, 480);
+  n8.el.querySelector(`input[data-field="target"]`).value = '"#weapon"';
+  n8.fields.target = '"#weapon"';
+  n8.el.querySelector(`input[data-field="message"]`).value = 'hash("shoot")';
+  n8.fields.message = 'hash("shoot")';
+
+  connections.push({ fromNode: n4.id, fromPort: 'exec', toNode: n5.id, toPort: 'a' });
+  connections.push({ fromNode: n4.id, fromPort: 'dt', toNode: n5.id, toPort: 'b' });
+  connections.push({ fromNode: n5.id, fromPort: 'result', toNode: n6.id, toPort: 'pos' });
+  connections.push({ fromNode: n4.id, fromPort: 'exec', toNode: n6.id, toPort: 'exec' });
+  connections.push({ fromNode: n7.id, fromPort: 'exec', toNode: n8.id, toPort: 'exec' });
+
+  setTimeout(() => { updateConnections(); generateCode(); updateStatus(); }, 50);
+}
+
+// ===================== KEYBOARD =====================
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode && e.target.tagName !== 'INPUT') {
+    deleteNode(selectedNode);
+    selectedNode = null;
+  }
+});
+
+// Init
+updateStatus();
+</script>
+</body>
+</html>
